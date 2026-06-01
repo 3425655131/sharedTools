@@ -200,7 +200,9 @@ public struct ShellDetector: Sendable {
     private func evaluateFamily(_ family: ShellFamily, entries: [String]) -> Candidate? {
         let matched = family.indicators.compactMap { indicator -> ShellIndicator? in
             let hits = indicator.patterns.contains { pattern in
-                entries.contains { $0.contains(pattern.lowercased()) }
+                entries.contains { entry in
+                    matches(entry: entry, pattern: pattern)
+                }
             }
             return hits ? indicator : nil
         }
@@ -216,7 +218,9 @@ public struct ShellDetector: Sendable {
     private func evaluateSuspicion(entries: [String]) -> SuspicionCandidate {
         let matched = suspiciousIndicators.compactMap { indicator -> SuspicionIndicator? in
             let hits = indicator.patterns.contains { pattern in
-                entries.contains { $0.contains(pattern.lowercased()) }
+                entries.contains { entry in
+                    matches(entry: entry, pattern: pattern)
+                }
             }
             return hits ? indicator : nil
         }
@@ -241,6 +245,69 @@ public struct ShellDetector: Sendable {
     private func unique(_ values: [String]) -> [String] {
         var seen = Set<String>()
         return values.filter { seen.insert($0).inserted }
+    }
+
+    private func matches(entry: String, pattern: String) -> Bool {
+        let normalizedPattern = pattern.lowercased()
+        let basename = entry.split(separator: "/").last.map(String.init) ?? entry
+
+        if normalizedPattern.hasSuffix("_") {
+            return basename.hasPrefix(normalizedPattern)
+        }
+
+        if normalizedPattern.contains("/") {
+            return entry.contains(normalizedPattern)
+        }
+
+        if isArtifactPattern(normalizedPattern) {
+            return matchesArtifactBasename(pattern: normalizedPattern, basename: basename)
+        }
+
+        let components = entry.split(separator: "/").map(String.init)
+        return components.contains { component in
+            containsDelimitedToken(component, token: normalizedPattern)
+        }
+    }
+
+    private func isArtifactPattern(_ pattern: String) -> Bool {
+        [".so", ".dex", ".mf", ".sig", ".pub"].contains { pattern.hasSuffix($0) }
+    }
+
+    private func matchesArtifactBasename(pattern: String, basename: String) -> Bool {
+        guard let extensionStart = pattern.lastIndex(of: ".") else {
+            return basename == pattern
+        }
+
+        let stem = String(pattern[..<extensionStart])
+        let suffix = String(pattern[extensionStart...])
+
+        guard basename.hasSuffix(suffix) else {
+            return false
+        }
+
+        let basenameStem = String(basename.dropLast(suffix.count))
+        return basenameStem == stem
+            || basenameStem.hasPrefix("\(stem)_")
+            || basenameStem.hasPrefix("\(stem)-")
+    }
+
+    private func containsDelimitedToken(_ value: String, token: String) -> Bool {
+        guard let range = value.range(of: token) else {
+            return false
+        }
+
+        let before = range.lowerBound > value.startIndex ? value[value.index(before: range.lowerBound)] : nil
+        let after = range.upperBound < value.endIndex ? value[range.upperBound] : nil
+
+        return isTokenBoundary(before) && isTokenBoundary(after)
+    }
+
+    private func isTokenBoundary(_ character: Character?) -> Bool {
+        guard let character else {
+            return true
+        }
+
+        return !character.isLetter && !character.isNumber
     }
 }
 

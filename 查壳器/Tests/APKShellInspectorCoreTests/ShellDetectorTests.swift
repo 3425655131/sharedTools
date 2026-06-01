@@ -121,3 +121,48 @@ func avoidsFalsePositiveForBusinessAssets() {
     #expect(result.disposition == .unknown)
     #expect(result.verdict == "未识别到已知加固")
 }
+
+@Test("does not detect iJiami from incidental business filename substrings")
+func avoidsFalsePositiveForIncidentalIjiamiSubstring() {
+    let result = ShellDetector.default.detect(from: [
+        "assets/campaigns/baijiami_launch_banner.png",
+        "classes.dex",
+    ])
+
+    #expect(result.disposition == .unknown)
+    #expect(result.verdict == "未识别到已知加固")
+}
+
+@Test("downgrades naga verdict when vdog only appears inside a longer helper library name")
+func avoidsFalsePositiveForIncidentalVdogHelperName() {
+    let result = ShellDetector.default.detect(from: [
+        "assets/meta-inf/enc.mf",
+        "lib/arm64-v8a/libvdoghelper.so",
+    ])
+
+    #expect(result.disposition == .suspectedFamily)
+    #expect(result.verdict == "疑似加固（偏向娜迦加固）")
+    #expect(!result.matchedFeatures.contains("libvdog"))
+}
+
+@Test("detects 360 from jiagu library variants")
+func detects360FromJiaguVariantLibrary() {
+    let result = ShellDetector.default.detect(from: [
+        "lib/arm64-v8a/libjiagu_art.so",
+    ])
+
+    #expect(result.disposition == .detectedKnown)
+    #expect(result.vendor == "360加固")
+}
+
+@Test("detects generic suspicion from dexhelper library variants")
+func detectsGenericSuspicionFromDexHelperVariantLibrary() {
+    let result = ShellDetector.default.detect(from: [
+        "lib/arm64-v8a/libDexHelper_v2.so",
+        "lib/arm64-v8a/libzeus_direct_dex.so",
+    ])
+
+    #expect(result.disposition == .suspectedUnknown)
+    #expect(result.verdict == "疑似存在加固")
+    #expect(result.matchedFeatures.contains("libDexHelper"))
+}
